@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room Distribution</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        textarea {
+            width: 80%;
+            height: 200px;
+            margin-top: 20px;
+            resize: none;
+            font-size: 16px;
+            padding: 10px;
+        }
+        button, label {
+            padding: 10px 20px;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        label {
+            background-color: #007BFF;
+        }
+        button {
+            margin-left: 10px;
+        }
+        #extractButton {
+            background-color: #28A745;
+        }
+        #filterButton {
+            background-color: #FF5722;
+        }
+        #numbersButton {
+            background-color: #6C757D;
+        }
+        #nkqButton {
+            background-color: #17A2B8;
+        }
+        #vacantOccupiedButton {
+            background-color: #FFC107;
+        }
+        #combineButton {
+            background-color: #343A40;
+        }
+        #searchButton {
+            background-color: #FF5722;
+        }
+        #distributeButton {
+            background-color: #6C757D;
+        }
+    </style>
+</head>
+<body>
+    <h1>Room Distribution</h1>
+
+    <!-- Choose File Button -->
+    <label for="fileInput">Choose File</label>
+    <input type="file" id="fileInput" accept="application/pdf" onchange="extractTextFromPDF()">
+
+    <!-- Extract Text Button -->
+    <button id="extractButton" onclick="placeExtractedText()">Extract Full Text</button>
+
+    <!-- Extract Dates Button -->
+    <button id="filterButton" onclick="placeExtractedDates()">Extract Dates</button>
+
+    <!-- Extract Three-Digit Numbers Button -->
+    <button id="numbersButton" onclick="placeExtractedNumbers()">Extract Three-Digit Numbers</button>
+
+    <!-- Extract Words Starting with N Followed by K or Q Button -->
+    <button id="nkqButton" onclick="placeExtractedNKQ()">Extract NK/Q Words</button>
+
+    <!-- Extract Vacant or Occupied Button -->
+    <button id="vacantOccupiedButton" onclick="placeExtractedVacantOccupied()">Extract Vacant/Occupied</button>
+
+    <!-- Combine All Button -->
+    <button id="combineButton" onclick="combineAll()">Combine All</button>
+
+    <!-- Search Box -->
+    <input type="text" id="searchInput" placeholder="Enter Room Number">
+    <button id="searchButton" onclick="searchRoom()">Search</button>
+
+    <!-- Name Distribution Textbox -->
+    <textarea id="nameBox" placeholder="Enter names here (one per line, e.g., 'name weight')"></textarea>
+    <button id="distributeButton" onclick="distributeRooms()">Distribute</button>
+
+    <!-- Textbox -->
+    <textarea id="textBox" placeholder="Output will appear here..."></textarea>
+
+    <!-- Include PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        let extractedText = "";
+        let roomData = []; // Array to store RoomInfo objects
+
+        // Custom class to store room information
+        class RoomInfo {
+            constructor(roomNumber, occStatus, roomType, departureDate) {
+                this.RoomNumber = roomNumber;
+                this.OccStatus = occStatus;
+                this.RoomType = roomType;
+                this.DepartureDate = departureDate;
+                this.IsCheckout = this.checkIfCheckout(occStatus, departureDate); // Determine if the room is checking out
+            }
+
+            // Method to check if the room is checking out
+            checkIfCheckout(occStatus, departureDate) {
+                if (occStatus === "Vacant") {
+                    return true;
+                }
+
+                const today = new Date();
+                const formattedToday = `${today.getDate().toString().padStart(2, '0')}-${today.toLocaleString('default', { month: 'short' })}-${today.getFullYear().toString().slice(-2)}`;
+                return departureDate === formattedToday;
+            }
+
+            toString() {
+                return `${this.RoomNumber} > ${this.OccStatus} > ${this.RoomType} > ${this.DepartureDate} > IsCheckout: ${this.IsCheckout}`;
+            }
+        }
+
+        // Function to clean extracted text
+        function cleanExtractedText() {
+            const timeRegex = /\b\d{1,2}:\d{2}:\d{2} (AM|PM)\s{3}/g;
+            extractedText = extractedText.replace(timeRegex, "");
+        }
+
+        // Function to extract text from a PDF file
+        async function extractTextFromPDF() {
+            const fileInput = document.getElementById('fileInput');
+
+            if (fileInput.files.length === 0) {
+                alert("Please select a file first.");
+                return;
+            }
+
+            const file = fileInput.files[0];
+
+            if (file.type && file.type !== "application/pdf") {
+                alert("Please select a valid PDF file.");
+                return;
+            }
+
+            const fileReader = new FileReader();
+
+            fileReader.onload = async function () {
+                try {
+                    const typedArray = new Uint8Array(this.result);
+                    const pdf = await pdfjsLib.getDocument(typedArray).promise;
+                    extractedText = "";
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+
+                        if (textContent && textContent.items) {
+                            textContent.items.forEach(item => {
+                                extractedText += item.str + " ";
+                            });
+                        }
+                    }
+
+                    cleanExtractedText();
+                    alert("Text extracted and cleaned successfully.");
+                } catch (error) {
+                    console.error("Error extracting text:", error);
+                    alert("Failed to extract text from the PDF.");
+                }
+            };
+
+            fileReader.onerror = function (error) {
+                console.error("File reading error:", error);
+                alert("An error occurred while reading the file.");
+            };
+
+            fileReader.readAsArrayBuffer(file);
+        }
+
+        // Helper function to extract matches based on a regex
+        function extractMatches(regex) {
+            if (!extractedText) {
+                alert("No text has been extracted yet. Please choose a PDF file first.");
+                return [];
+            }
+            const matches = extractedText.match(regex);
+            return matches || [];
+        }
+
+        // Individual button functions
+        function placeExtractedText() {
+            document.getElementById('textBox').value = extractedText || "No text has been extracted yet.";
+        }
+
+        function placeExtractedDates() {
+            const dateRegex = /\b\d{2}-[A-Za-z]{3}-\d{2}\s{3}(\d{2}-[A-Za-z]{3}-\d{2})\b/g;
+            const matches = [];
+            let match;
+
+            while ((match = dateRegex.exec(extractedText)) !== null) {
+                matches.push(match[1]); // Push only the second date
+            }
+
+            document.getElementById('textBox').value = matches.join("\n");
+        }
+
+        function placeExtractedNumbers() {
+            const numbers = extractMatches(/\b\d{3}\b/g);
+            document.getElementById('textBox').value = numbers.join("\n");
+        }
+
+        function placeExtractedNKQ() {
+            const nkqWords = extractMatches(/\bN[QK][A-Za-z]*\b/g);
+            document.getElementById('textBox').value = nkqWords.join("\n");
+        }
+
+        function placeExtractedVacantOccupied() {
+            const vacantOccupied = extractMatches(/\b(Vacant|Occupied)\b/g);
+            document.getElementById('textBox').value = vacantOccupied.join("\n");
+        }
+
+        // Combine All Function
+        function combineAll() {
+            const textBox = document.getElementById('textBox');
+            roomData = []; // Clear previous data
+            
+            const numbers = extractMatches(/\b\d{3}\b/g);
+            const vacantOccupied = extractMatches(/\b(Vacant|Occupied)\b/g);
+            const nkqWords = extractMatches(/\bN[QK][A-Za-z]*\b/g);
+            const dateRegex = /\b\d{2}-[A-Za-z]{3}-\d{2}\s{3}(\d{2}-[A-Za-z]{3}-\d{2})\b/g;
+            const dates = [];
+            let match;
+
+            while ((match = dateRegex.exec(extractedText)) !== null) {
+                dates.push(match[1]);
+            }
+
+            const maxLength = Math.max(numbers.length, vacantOccupied.length, nkqWords.length, dates.length);
+            const combinedLines = [];
+
+            for (let i = 0; i < maxLength; i++) {
+                const roomNumber = numbers[i] || "";
+                const occStatus = vacantOccupied[i] || "";
+                const roomType = nkqWords[i] || "";
+                const departureDate = dates[i] || "";
+
+                // Create and store RoomInfo object
+                const roomInfo = new RoomInfo(roomNumber, occStatus, roomType, departureDate);
+                roomData.push(roomInfo);
+
+                combinedLines.push(roomInfo.toString());
+            }
+
+            textBox.value = combinedLines.join("\n");
+        }
+
+        function distributeRooms() {
+    const nameBox = document.getElementById('nameBox').value.trim();
+    const namesAndWeights = nameBox.split("\n").map(line => {
+        const [name, weight] = line.split(" ").map(part => part.trim());
+        return { name, weight: parseInt(weight, 10) || 1, checkouts: 0, stayovers: 0, rooms: [] };
+    });
+
+    if (namesAndWeights.length === 0) {
+        alert("Please enter at least one name.");
+        return;
+    }
+
+    if (roomData.length === 0) {
+        alert("No rooms available for distribution. Please run 'Combine All' first.");
+        return;
+    }
+
+    // Separate rooms by IsCheckout status and sort by RoomNumber
+    const roomsWithCheckout = roomData
+        .filter(room => room.IsCheckout)
+        .sort((a, b) => parseInt(a.RoomNumber) - parseInt(b.RoomNumber));
+    const roomsWithoutCheckout = roomData
+        .filter(room => !room.IsCheckout)
+        .sort((a, b) => parseInt(a.RoomNumber) - parseInt(b.RoomNumber));
+
+    const totalWeight = namesAndWeights.reduce((sum, nw) => sum + nw.weight, 0);
+
+    let roomIndexWithCheckout = 0;
+    let roomIndexWithoutCheckout = 0;
+
+    // Initial distribution based on weights
+    namesAndWeights.forEach((person) => {
+        const numRoomsWithCheckout = Math.round((person.weight / totalWeight) * roomsWithCheckout.length);
+        const numRoomsWithoutCheckout = Math.round((person.weight / totalWeight) * roomsWithoutCheckout.length);
+
+        const assignedRoomsWithCheckout = roomsWithCheckout.slice(
+            roomIndexWithCheckout,
+            roomIndexWithCheckout + numRoomsWithCheckout
+        );
+        const assignedRoomsWithoutCheckout = roomsWithoutCheckout.slice(
+            roomIndexWithoutCheckout,
+            roomIndexWithoutCheckout + numRoomsWithoutCheckout
+        );
+
+        roomIndexWithCheckout += assignedRoomsWithCheckout.length;
+        roomIndexWithoutCheckout += assignedRoomsWithoutCheckout.length;
+
+        person.checkouts = assignedRoomsWithCheckout.length;
+        person.stayovers = assignedRoomsWithoutCheckout.length;
+        person.rooms = [...assignedRoomsWithCheckout, ...assignedRoomsWithoutCheckout];
+    });
+
+    // Distribute any remaining rooms
+    const remainingRoomsWithCheckout = roomsWithCheckout.slice(roomIndexWithCheckout);
+    const remainingRoomsWithoutCheckout = roomsWithoutCheckout.slice(roomIndexWithoutCheckout);
+
+    // Add remaining `IsCheckout` rooms
+    remainingRoomsWithCheckout.forEach((room, index) => {
+        const person = namesAndWeights[index % namesAndWeights.length];
+        person.checkouts += 1;
+        person.rooms.push(room);
+    });
+
+    // Add remaining `IsCheckout: false` rooms
+    remainingRoomsWithoutCheckout.forEach((room, index) => {
+        const person = namesAndWeights[index % namesAndWeights.length];
+        person.stayovers += 1;
+        person.rooms.push(room);
+    });
+
+    // Prepare the result output
+    const result = namesAndWeights.map((person) => {
+        const totalRooms = person.checkouts + person.stayovers;
+        return `${person.name} has (${person.checkouts}) checkouts, (${person.stayovers}) stayovers, (${totalRooms}) total rooms\n` +
+            person.rooms.map(room => room.toString()).join("\n");
+    });
+
+    // Output the distribution to the main textbox
+    document.getElementById('textBox').value = result.join("\n\n");
+}
+
+
+
+
+
+        // Search Function
+        function searchRoom() {
+            const searchInput = document.getElementById('searchInput').value.trim();
+            if (!searchInput) {
+                alert("Please enter a room number to search.");
+                return;
+            }
+
+            const result = roomData.find(room => room.RoomNumber === searchInput);
+            if (result) {
+                document.getElementById('textBox').value = result.toString();
+            } else {
+                document.getElementById('textBox').value = "No room found with the given number.";
+            }
+        }
+    </script>
+</body>
+</html>
