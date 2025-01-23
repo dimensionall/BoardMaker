@@ -58,6 +58,9 @@
         #distributeButton {
             background-color: #6C757D;
         }
+        #parseButton {
+            background-color: #007BFF;
+        }
     </style>
 </head>
 <body>
@@ -73,6 +76,9 @@
 
     <!-- Extract Text Button -->
     <button id="extractButton" onclick="placeExtractedText()">Extract Full Text</button>
+
+<!-- New Button to Parse Three-Digit Numbers -->
+<button id="parseButton" onclick="parseThreeDigitNumbers()">Parse Three-Digit Numbers</button>
 
     <!-- Extract Dates Button -->
     <button id="filterButton" onclick="placeExtractedDates()">Extract Dates</button>
@@ -271,7 +277,7 @@ function combineAll() {
 }
 
 
-        function distributeRooms() {
+function distributeRooms() {
     const nameBox = document.getElementById('nameBox').value.trim();
     const namesAndWeights = nameBox.split("\n").map(line => {
         const [name, weight] = line.split(" ").map(part => part.trim());
@@ -284,11 +290,11 @@ function combineAll() {
     }
 
     if (roomData.length === 0) {
-        alert("No rooms available for distribution. Please run 'Combine All' first.");
+        alert("No rooms available for distribution. Please run 'Parse Three-Digit Numbers' first.");
         return;
     }
 
-    // Separate rooms by IsCheckout status and sort by RoomNumber
+    // Separate rooms by IsCheckout status
     const roomsWithCheckout = roomData
         .filter(room => room.IsCheckout)
         .sort((a, b) => parseInt(a.RoomNumber) - parseInt(b.RoomNumber));
@@ -298,65 +304,50 @@ function combineAll() {
 
     const totalWeight = namesAndWeights.reduce((sum, nw) => sum + nw.weight, 0);
 
-    let roomIndexWithCheckout = 0;
-    let roomIndexWithoutCheckout = 0;
+    // Strict sequential distribution
+    const distributeRoomsToPeople = (rooms, key) => {
+        let roomIndex = 0;
+        namesAndWeights.forEach(person => {
+            const numRooms = Math.round((person.weight / totalWeight) * rooms.length);
+            const assignedRooms = rooms.slice(roomIndex, roomIndex + numRooms);
+            roomIndex += assignedRooms.length;
 
-    // Initial distribution based on weights
-    namesAndWeights.forEach((person) => {
-        const numRoomsWithCheckout = Math.round((person.weight / totalWeight) * roomsWithCheckout.length);
-        const numRoomsWithoutCheckout = Math.round((person.weight / totalWeight) * roomsWithoutCheckout.length);
+            // Assign rooms and count checkouts/stayovers
+            person[key] += assignedRooms.length;
+            person.rooms.push(...assignedRooms);
+        });
 
-        const assignedRoomsWithCheckout = roomsWithCheckout.slice(
-            roomIndexWithCheckout,
-            roomIndexWithCheckout + numRoomsWithCheckout
-        );
-        const assignedRoomsWithoutCheckout = roomsWithoutCheckout.slice(
-            roomIndexWithoutCheckout,
-            roomIndexWithoutCheckout + numRoomsWithoutCheckout
-        );
+        // Assign any remaining rooms sequentially
+        const remainingRooms = rooms.slice(roomIndex);
+        remainingRooms.forEach((room, index) => {
+            const person = namesAndWeights[index % namesAndWeights.length];
+            person[key] += 1;
+            person.rooms.push(room);
+        });
+    };
 
-        roomIndexWithCheckout += assignedRoomsWithCheckout.length;
-        roomIndexWithoutCheckout += assignedRoomsWithoutCheckout.length;
-
-        person.checkouts = assignedRoomsWithCheckout.length;
-        person.stayovers = assignedRoomsWithoutCheckout.length;
-        person.rooms = [...assignedRoomsWithCheckout, ...assignedRoomsWithoutCheckout];
-    });
-
-    // Distribute any remaining rooms
-    const remainingRoomsWithCheckout = roomsWithCheckout.slice(roomIndexWithCheckout);
-    const remainingRoomsWithoutCheckout = roomsWithoutCheckout.slice(roomIndexWithoutCheckout);
-
-    remainingRoomsWithCheckout.forEach((room, index) => {
-        const person = namesAndWeights[index % namesAndWeights.length];
-        person.checkouts += 1;
-        person.rooms.push(room);
-    });
-
-    remainingRoomsWithoutCheckout.forEach((room, index) => {
-        const person = namesAndWeights[index % namesAndWeights.length];
-        person.stayovers += 1;
-        person.rooms.push(room);
-    });
+    // Distribute checkouts and stayovers
+    distributeRoomsToPeople(roomsWithCheckout, "checkouts");
+    distributeRoomsToPeople(roomsWithoutCheckout, "stayovers");
 
     // Prepare the result output
     const result = namesAndWeights.map((person) => {
         const totalRooms = person.checkouts + person.stayovers;
 
         // Add header for room details
-        const header = `${"Room".padEnd(10)}${"Occ Status".padEnd(15)}${"Room Type".padEnd(15)}${"Departure Date".padEnd(20)}IsCheckout`;
+        const header = `${"Room".padEnd(10)}${"Occ Status".padEnd(15)}${"Room Type".padEnd(15)}${"Departure Date".padEnd(20)}Checkout/Stayover`;
 
         // Format checkouts and stayovers with their headers
         const checkouts = person.rooms
             .filter(room => room.IsCheckout)
             .map(room => {
-                return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}IsCheckout: ${room.IsCheckout}`;
+                return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}Checkout`;
             }).join("\n");
 
         const stayovers = person.rooms
             .filter(room => !room.IsCheckout)
             .map(room => {
-                return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}IsCheckout: ${room.IsCheckout}`;
+                return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}Stayover`;
             }).join("\n");
 
         return `${person.name.padEnd(15)}(${person.checkouts}) checkouts, (${person.stayovers}) stayovers, (${totalRooms}) total rooms\n\n` +
@@ -458,6 +449,82 @@ async function generatePDF() {
     // Create a Blob URL and open it in a new tab
     const blobUrl = URL.createObjectURL(pdfBlob);
     window.open(blobUrl, "_blank");
+}
+
+
+
+
+
+
+
+
+function parseThreeDigitNumbers() {
+    if (!extractedText) {
+        alert("No text has been extracted yet. Please choose a PDF file first.");
+        return;
+    }
+
+    // Ensure extractedText has consistent line breaks for easier parsing
+    const normalizedText = extractedText.replace(/\r?\n|\r/g, " "); // Replace all newlines with spaces
+
+    // Step 1: Extract text blocks between three-digit numbers
+    const blockRegex = /\b(\d{3})\b(.*?)(?=\b\d{3}\b|$)/gs;
+    const textBlocks = [];
+    let match;
+
+    while ((match = blockRegex.exec(normalizedText)) !== null) {
+        const block = `${match[1]} ${match[2].trim()}`; // Include the number and the associated text
+        textBlocks.push(block);
+    }
+
+    // Step 2: Parse each block for specific fields
+    roomData = []; // Clear previous data
+    textBlocks.forEach((block) => {
+        // Regex patterns for specific fields
+        const roomNumberMatch = block.match(/\b\d{3}\b/); // Three-digit number
+        const roomTypeMatch = block.match(/\bN[KQ][A-Za-z]*\b/); // Words starting with "N" followed by "K" or "Q"
+        const occStatusMatch = block.match(/\b(Occupied|Vacant)\b/); // Occupancy status
+        const dateMatch = block.match(/\b\d{2}-[A-Za-z]{3}-\d{2}\s{3}(\d{2}-[A-Za-z]{3}-\d{2})\b/); // Second date
+
+        const roomNumber = roomNumberMatch ? roomNumberMatch[0] : "";
+        const roomType = roomTypeMatch ? roomTypeMatch[0] : "";
+        const occStatus = occStatusMatch ? occStatusMatch[0] : "";
+        let departureDate = dateMatch ? dateMatch[1] : "Not Specified"; // Default to "Not Specified" if blank
+
+        // Calculate IsCheckout
+        let isCheckout = false;
+        if (occStatus === "Vacant") {
+            isCheckout = true;
+        } else if (departureDate !== "Not Specified") {
+            const today = new Date();
+            const formattedToday = `${today.getDate().toString().padStart(2, '0')}-${today.toLocaleString('default', { month: 'short' })}-${today.getFullYear().toString().slice(-2)}`;
+            isCheckout = departureDate === formattedToday;
+        }
+
+        // Create and store RoomInfo object
+        const roomInfo = {
+            RoomNumber: roomNumber,
+            RoomType: roomType,
+            OccStatus: occStatus,
+            DepartureDate: departureDate,
+            IsCheckout: isCheckout
+        };
+        roomData.push(roomInfo);
+    });
+
+    // Step 3: Display the parsed data
+    if (roomData.length === 0) {
+        alert("No valid room data found.");
+        return;
+    }
+
+    const parsedData = roomData.map(room =>
+        `${room.RoomNumber.padEnd(10)}${room.RoomType.padEnd(20)}${room.OccStatus.padEnd(12)}${room.DepartureDate.padEnd(15)}${room.IsCheckout ? "Checkout" : "Stayover"}`
+    );
+
+    const textBox = document.getElementById('textBox');
+    textBox.style.fontFamily = 'monospace'; // Use monospace font for alignment
+    textBox.value = parsedData.join("\n");
 }
 
 
