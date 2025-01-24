@@ -61,6 +61,12 @@
         #parseButton {
             background-color: #007BFF;
         }
+        #downloadButton {
+            background-color: #007BFF;
+        }
+        #downloadButtonLandscape {
+            background-color: #007BFF;
+        }
     </style>
 </head>
 <body>
@@ -68,40 +74,51 @@
 <!-- Download PDF Button -->
 <button id="downloadButton" onclick="generatePDF()">Download as PDF</button>
 
+<button id="downloadButtonLandscape" onclick="generatePDFLandscape()">Download as PDF (Landscape)</button>
+
+
 <!-- Include jsPDF Library -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
     <!-- Choose File Button -->
     <label for="fileInput">Choose File</label>
     <input type="file" id="fileInput" accept="application/pdf" onchange="extractTextFromPDF()">
 
-    <!-- Extract Text Button -->
-    <button id="extractButton" onclick="placeExtractedText()">Extract Full Text</button>
+
 
 <!-- New Button to Parse Three-Digit Numbers -->
 <button id="parseButton" onclick="parseThreeDigitNumbers()">Parse Three-Digit Numbers</button>
 
-    <!-- Extract Dates Button -->
-    <button id="filterButton" onclick="placeExtractedDates()">Extract Dates</button>
 
-    <!-- Extract Three-Digit Numbers Button -->
-    <button id="numbersButton" onclick="placeExtractedNumbers()">Extract Three-Digit Numbers</button>
 
-    <!-- Extract Words Starting with N Followed by K or Q Button -->
-    <button id="nkqButton" onclick="placeExtractedNKQ()">Extract NK/Q Words</button>
 
-    <!-- Extract Vacant or Occupied Button -->
-    <button id="vacantOccupiedButton" onclick="placeExtractedVacantOccupied()">Extract Vacant/Occupied</button>
 
-    <!-- Combine All Button -->
-    <button id="combineButton" onclick="combineAll()">Combine All</button>
 
-    <!-- Search Box -->
-    <input type="text" id="searchInput" placeholder="Enter Room Number">
-    <button id="searchButton" onclick="searchRoom()">Search</button>
+
+
+
+
 
     <!-- Name Distribution Textbox -->
     <textarea id="nameBox" placeholder="Enter names here (one per line, e.g., 'name weight')"></textarea>
     <button id="distributeButton" onclick="distributeRooms()">Distribute</button>
+
+<div>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Clay')">Clay</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Colby')">Colby</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Sherry')">Sherry</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Alejandra')">Alejandra</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Cheryl')">Cheryl</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Grace')">Grace</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Liz')">Liz</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Stephanie')">Stephanie</button>
+    <button style="background-color: red; color: white;" onclick="addToTextbox('Lediana')">Lediana</button>
+</div>
+
+
+
+
+
+
 
     <!-- Textbox -->
     <textarea id="textBox" placeholder="Output will appear here..."></textarea>
@@ -277,11 +294,21 @@ function combineAll() {
 }
 
 
+
+
+
+
+
+
+
+
+
+
 function distributeRooms() {
     const nameBox = document.getElementById('nameBox').value.trim();
     const namesAndWeights = nameBox.split("\n").map(line => {
         const [name, weight] = line.split(" ").map(part => part.trim());
-        return { name, weight: parseInt(weight, 10) || 1, checkouts: 0, stayovers: 0, rooms: [] };
+        return { name, weight: parseInt(weight, 10) || 1, checkouts: [], stayovers: [] };
     });
 
     if (namesAndWeights.length === 0) {
@@ -294,75 +321,84 @@ function distributeRooms() {
         return;
     }
 
-    // Separate rooms by IsCheckout status
-    const roomsWithCheckout = roomData
-        .filter(room => room.IsCheckout)
-        .sort((a, b) => parseInt(a.RoomNumber) - parseInt(b.RoomNumber));
-    const roomsWithoutCheckout = roomData
-        .filter(room => !room.IsCheckout)
-        .sort((a, b) => parseInt(a.RoomNumber) - parseInt(b.RoomNumber));
+    // Split rooms into checkouts and stayovers
+    const checkouts = roomData.filter(room => room.IsCheckout).sort((a, b) => {
+        const floorA = parseInt(a.RoomNumber.charAt(0)); // First digit of room number = floor
+        const floorB = parseInt(b.RoomNumber.charAt(0));
+        if (floorA !== floorB) return floorA - floorB; // Compare floors
+        return parseInt(a.RoomNumber) - parseInt(b.RoomNumber); // Compare room numbers
+    });
 
-    const totalWeight = namesAndWeights.reduce((sum, nw) => sum + nw.weight, 0);
+    const stayovers = roomData.filter(room => !room.IsCheckout).sort((a, b) => {
+        const floorA = parseInt(a.RoomNumber.charAt(0)); // First digit of room number = floor
+        const floorB = parseInt(b.RoomNumber.charAt(0));
+        if (floorA !== floorB) return floorA - floorB; // Compare floors
+        return parseInt(a.RoomNumber) - parseInt(b.RoomNumber); // Compare room numbers
+    });
 
-    // Strict sequential distribution
-    const distributeRoomsToPeople = (rooms, key) => {
+    // Calculate the total weight (hours worked)
+    const totalWeight = namesAndWeights.reduce((sum, person) => sum + person.weight, 0);
+
+    // Function to distribute rooms proportionally
+    const distributeProportionally = (rooms, categoryKey) => {
+        const baseCounts = namesAndWeights.map(person => ({
+            person,
+            count: Math.floor((person.weight / totalWeight) * rooms.length), // Base number of rooms
+        }));
+
+        // Calculate remaining rooms after base allocation
+        const totalBaseAssigned = baseCounts.reduce((sum, entry) => sum + entry.count, 0);
+        let remainingRooms = rooms.length - totalBaseAssigned;
+
+        // Assign base rooms to each person
         let roomIndex = 0;
-        namesAndWeights.forEach(person => {
-            const numRooms = Math.round((person.weight / totalWeight) * rooms.length);
-            const assignedRooms = rooms.slice(roomIndex, roomIndex + numRooms);
-            roomIndex += assignedRooms.length;
-
-            // Assign rooms and count checkouts/stayovers
-            person[key] += assignedRooms.length;
-            person.rooms.push(...assignedRooms);
+        baseCounts.forEach(({ person, count }) => {
+            const assignedRooms = rooms.slice(roomIndex, roomIndex + count);
+            person[categoryKey].push(...assignedRooms);
+            roomIndex += count;
         });
 
-        // Assign any remaining rooms sequentially
-        const remainingRooms = rooms.slice(roomIndex);
-        remainingRooms.forEach((room, index) => {
-            const person = namesAndWeights[index % namesAndWeights.length];
-            person[key] += 1;
-            person.rooms.push(room);
-        });
+        // Distribute remaining rooms starting from the end of the list
+        for (let i = namesAndWeights.length - 1; remainingRooms > 0; i--) {
+            const person = namesAndWeights[i % namesAndWeights.length];
+            const room = rooms[roomIndex];
+            person[categoryKey].push(room);
+            roomIndex += 1;
+            remainingRooms -= 1;
+        }
     };
 
-    // Distribute checkouts and stayovers
-    distributeRoomsToPeople(roomsWithCheckout, "checkouts");
-    distributeRoomsToPeople(roomsWithoutCheckout, "stayovers");
+    // Distribute checkouts and stayovers separately
+    distributeProportionally(checkouts, "checkouts");
+    distributeProportionally(stayovers, "stayovers");
 
-    // Prepare the result output
-    const result = namesAndWeights.map((person) => {
-        const totalRooms = person.checkouts + person.stayovers;
+    // Prepare output with detailed formatting
+    const result = namesAndWeights.map(person => {
+        const totalRooms = person.checkouts.length + person.stayovers.length;
 
         // Add header for room details
         const header = `${"Room".padEnd(10)}${"Occ Status".padEnd(15)}${"Room Type".padEnd(15)}${"Departure Date".padEnd(20)}Checkout/Stayover`;
 
         // Format checkouts and stayovers with their headers
-        const checkouts = person.rooms
-            .filter(room => room.IsCheckout)
-            .map(room => {
-                return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}Checkout`;
-            }).join("\n");
+        const checkouts = person.checkouts.map(room => {
+            return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}Checkout`;
+        }).join("\n");
 
-        const stayovers = person.rooms
-            .filter(room => !room.IsCheckout)
-            .map(room => {
-                return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}Stayover`;
-            }).join("\n");
+        const stayovers = person.stayovers.map(room => {
+            return `${(room.RoomNumber || "").padEnd(10)}${(room.OccStatus || "").padEnd(15)}${(room.RoomType || "").padEnd(15)}${(room.DepartureDate || "").padEnd(20)}Stayover`;
+        }).join("\n");
 
-        return `${person.name.padEnd(15)}(${person.checkouts}) checkouts, (${person.stayovers}) stayovers, (${totalRooms}) total rooms\n\n` +
+        return `${person.name.padEnd(15)}(${person.checkouts.length}) checkouts, (${person.stayovers.length}) stayovers, (${totalRooms}) total rooms\n\n` +
             header + "\n\n" +
             (checkouts ? "CHECKOUTS\n\n" + checkouts + "\n\n" : "") +
             (stayovers ? "STAYOVERS\n\n" + stayovers : "");
     });
 
-    // Set the textbox font to monospace and display the result
+    // Display results in the text box
     const textBox = document.getElementById('textBox');
-    textBox.style.fontFamily = 'monospace';
+    textBox.style.fontFamily = 'monospace'; // Use monospace for alignment
     textBox.value = result.join("\n\n");
 }
-
-
 
 
 
@@ -401,11 +437,11 @@ async function generatePDF() {
     const lines = text.split("\n");
 
     // Define formatting constants
-    const margin = 10; // Margin for the text
+    const margin = 5; // Margin for the text
     const pageWidth = doc.internal.pageSize.width - 2 * margin;
     const pageHeight = doc.internal.pageSize.height;
-    const lineHeight = 4; // Reduced line height
-    const fontSize = 10; // Font size
+    const lineHeight = 5; // Reduced line height
+    const fontSize = 12; // Font size
 
     doc.setFont("Courier", "normal"); // Use a monospace font for alignment
     doc.setFontSize(fontSize); // Set font size
@@ -451,6 +487,66 @@ async function generatePDF() {
     window.open(blobUrl, "_blank");
 }
 
+
+
+
+
+
+
+
+
+async function generatePDFLandscape() {
+    const { jsPDF } = window.jspdf;
+
+    // Create a new jsPDF instance in landscape mode
+    const doc = new jsPDF("landscape");
+
+    // Get the text from the main textbox
+    const text = document.getElementById('textBox').value.trim();
+
+    // Split the text into sections based on lines starting with a person's name
+    // (assumes a format like "Name (X) checkouts, (Y) stayovers, (Z) total rooms")
+    const sections = text.split(/\n(?=\w+\s+\(\d+\)\s+checkouts,)/);
+
+    // Define formatting constants
+    const margin = 10; // Margin for the text
+    const pageWidth = doc.internal.pageSize.width - 2 * margin;
+    const pageHeight = doc.internal.pageSize.height;
+    const lineHeight = 8; // Line height
+    const fontSize = 15; // Font size
+
+    doc.setFont("Courier", "normal"); // Use a monospace font for alignment
+    doc.setFontSize(fontSize); // Set font size
+
+    sections.forEach((section, sectionIndex) => {
+        // Split the section into lines
+        const lines = section.split("\n");
+
+        // Initial vertical position
+        let y = margin;
+
+        lines.forEach((line) => {
+            // Check if the current line would overflow the page
+            if (y + lineHeight > pageHeight - margin) {
+                doc.addPage(); // Add a new page
+                y = margin; // Reset vertical position
+            }
+
+            // Write the line to the PDF
+            doc.text(line, margin, y);
+            y += lineHeight; // Move down for the next line
+        });
+
+        // Add a new page for the next person, unless it's the last section
+        if (sectionIndex < sections.length - 1) {
+            doc.addPage();
+        }
+    });
+
+    // Open the PDF in a new tab
+    const blobUrl = doc.output("bloburl");
+    window.open(blobUrl, "_blank");
+}
 
 
 
@@ -528,6 +624,18 @@ function parseThreeDigitNumbers() {
 }
 
 
+
+
+
+
+
+
+
+function addToTextbox(name) {
+    const nameBox = document.getElementById('nameBox');
+    const newValue = `${name} 8\n`;
+    nameBox.value += newValue;
+}
 
 
 
